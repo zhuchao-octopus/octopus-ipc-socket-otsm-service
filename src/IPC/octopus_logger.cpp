@@ -12,6 +12,9 @@
 // [INFO] [2025-03-14 12:34:56] System started successfully
 
 #include <octopus_logger.hpp>
+#include <iostream>
+#include <sstream>   // 必须加这一行
+#include <string>
 
 std::mutex Logger::log_mutex;
 LogLevel Logger::current_level = LOG_DEBUG; // Default log level

@@ -54,7 +54,6 @@ typedef carinfo_meter_t *(*T_otsm_get_meter_info)();
 typedef carinfo_indicator_t *(*T_otsm_get_indicator_info)();
 typedef carinfo_battery_t *(*T_otsm_get_battery_info)();
 typedef carinfo_error_t *(*T_otsm_get_error_info)();
-// typedef carinfo_drivinfo_t *(*T_otsm_get_drivinfo_info)();
 
 typedef flash_meta_infor_t *(*T_otsm_flash_get_meta_infor)();
 typedef mcu_update_progress_t (*T_otsm_get_mcu_upgrade_progress_info)();
@@ -72,6 +71,8 @@ T_otsm_get_error_info otsm_get_error_info = NULL;
 T_otsm_SendMessageFunc otsm_SendMessage = NULL;
 T_otsm_flash_get_meta_infor otsm_get_mcu_flash_meta_infor = NULL;
 T_otsm_get_mcu_upgrade_progress_info otsm_get_mcu_upgrade_progress_info = NULL;
+
+T_otsm_MessageDataCallbackFunc otsm_MessageDataCallbackFunc = NULL; // to mcu
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Function to handle client communication
 template <typename T>
@@ -172,6 +173,7 @@ void ipc_server_update_client(int fd, bool new_flag)
         std::cerr << "Client FD not found: " << fd << std::endl;
     }
 }
+
 void ipc_server_update_client(int fd, const std::string &ip)
 {
     std::lock_guard<std::mutex> lock(clients_mutex); // 线程安全
@@ -246,12 +248,13 @@ void ipc_server_remove_old_socket_bind_file()
     unlink(socket_path);
 }
 
+// datas from mcu
 void ipc_server_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const uint8_t *data, uint16_t length)
 {
     // std::cout << "Server handling otsm message cmd_parameter=" << cmd_parameter << std::endl;
     if (active_clients.empty())
     {
-        // std::cout << "[INFO] No clients to notify for cmd_parameter = " << msg_id << std::endl;
+        std::cout << "[INFO] No clients to notify for cmd_parameter = " << msg_id << std::endl;
         return;
     }
 
@@ -295,6 +298,7 @@ void ipc_server_signal_handler(int signum)
 }
 
 // Function to handle communication with a specific client
+// from user app
 /**
  * @brief Handles communication with a connected client socket.
  *
@@ -492,6 +496,16 @@ int ipc_server_handle_mcu_event(int client_fd, const DataMessage &query_msg)
     {
         ipc_server_notify_mcu_infor_to_client(client_fd, query_msg.msg_group, query_msg.msg_id, NULL, 0);
     }
+    else
+    {
+        if (otsm_MessageDataCallbackFunc)
+        {
+            // otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_MCU_EVENT, MSG_OTSM_CMD_MCU_USER_CUSTOMIZE, 0);
+            const uint8_t *ptr_data = query_msg.data.empty() ? nullptr : query_msg.data.data();
+            size_t length = query_msg.data.size();
+            otsm_MessageDataCallbackFunc(query_msg.msg_group, query_msg.msg_id, ptr_data, length);
+        }
+    }
     return 0;
 }
 
@@ -623,18 +637,20 @@ int ipc_server_handle_car_event(int client_fd, const DataMessage &data_message)
             carinfo_battery_t *carinfo_battery = otsm_get_battery_info();
             // memcpy(carinfo_battery, &data_message.data, sizeof(carinfo_battery_t));
             std::memcpy(carinfo_battery, data_message.data.data(), sizeof(carinfo_battery_t));
-            //  otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_CAR_EVENT, data_message.msg_id, 0);
+            // otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_CAR_EVENT, data_message.msg_id, 0);
             otsm_SendMessage(TASK_MODULE_PTL_1, SOC_TO_MCU_MOD_IPC, FRAME_CMD_CAR_SET_BATTERY, 0);
         }
         break;
 
-    default:
-        ipc_server_notify_car_infor_to_client(client_fd, MSG_GROUP_CAR, data_message.msg_id, NULL, 0);
+    default:;
     }
 
     return 0;
 }
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Main function to notify car info to the client
 void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length)
 {
@@ -742,8 +758,8 @@ void ipc_server_notify_mcu_infor_to_client(int client_fd, int msg_grp, int msg_i
             flash_meta_infor_t *flash_meta_infor = otsm_get_mcu_flash_meta_infor();
             ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, flash_meta_infor, sizeof(flash_meta_infor_t), "handle_mcu_flash_mata_infor (Meta)");
         }
-
         break;
+
     case MSG_IPC_CMD_KEY_EVENT:
     case MSG_IPC_CMD_KEY_DOWN_EVENT:
     case MSG_IPC_CMD_KEY_UP_EVENT:
@@ -751,6 +767,7 @@ void ipc_server_notify_mcu_infor_to_client(int client_fd, int msg_grp, int msg_i
         break;
 
     default:
+        ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, data, length, "handle_mcu_customize_infor (user)");
         break;
     }
 }
@@ -864,14 +881,14 @@ void ipc_server_initialize_otsm()
     }
 
 #if 0
-    otsm_get_drivinfo_info = (carinfo_drivinfo_t * (*)()) dlsym(handle, "app_carinfo_get_drivinfo_info");
-    otsm_get_drivinfo_info = (T_otsm_get_drivinfo_info)dlsym(handle, "task_carinfo_get_drivinfo_info");
-    if (!otsm_get_drivinfo_info)
-    {
-        std::cerr << "Server Failed to find otsm_get_drivinfo_info: " << dlerror() << std::endl;
-        dlclose(handle);
-        return;
-    }
+        otsm_get_drivinfo_info = (carinfo_drivinfo_t * (*)()) dlsym(handle, "app_carinfo_get_drivinfo_info");
+        otsm_get_drivinfo_info = (T_otsm_get_drivinfo_info)dlsym(handle, "task_carinfo_get_drivinfo_info");
+        if (!otsm_get_drivinfo_info)
+        {
+            std::cerr << "Server Failed to find otsm_get_drivinfo_info: " << dlerror() << std::endl;
+            dlclose(handle);
+            return;
+        }
 #endif
 
     otsm_SendMessage = (T_otsm_SendMessageFunc)dlsym(handle, "send_message_adapter");
@@ -894,6 +911,14 @@ void ipc_server_initialize_otsm()
     if (!otsm_get_mcu_flash_meta_infor)
     {
         std::cerr << "Server Failed to find otsm_get_mcu_flash_meta_infor: " << dlerror() << std::endl;
+        dlclose(handle);
+        return;
+    }
+
+    otsm_MessageDataCallbackFunc = (T_otsm_MessageDataCallbackFunc)dlsym(handle, "ipc_notify_message_from_client");
+    if (!otsm_MessageDataCallbackFunc)
+    {
+        std::cerr << "Server Failed to find otsm_MessageDataCallbackFunc: " << dlerror() << std::endl;
         dlclose(handle);
         return;
     }

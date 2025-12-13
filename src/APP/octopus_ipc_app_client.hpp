@@ -44,8 +44,8 @@ extern "C"
      * @param callback Function pointer to the callback.
      */
 
-    void ipc_register_socket_callback(std::string func_name, OctopusAppResponseCallback callback);
-    void ipc_unregister_socket_callback(OctopusAppResponseCallback callback);
+void ipc_register_socket_callback(const char *func_name, OctopusAppResponseCallback callback);
+void ipc_unregister_socket_callback(OctopusAppResponseCallback callback);
 
     /**
      * @brief Initializes the client connection and starts the response receiver thread.
@@ -92,7 +92,9 @@ extern "C"
      */
     void ipc_send_message_queue_delayed(DataMessage &message, int delay_ms);
 
-    void ipc_send_message_queue(uint8_t group, uint8_t msg_id, const std::vector<uint8_t> &message_data, int delay);
+void ipc_send_message_queue(uint8_t group, uint8_t msg_id, const uint8_t *message_data, int message_size, int delay);
+
+
 #ifdef __cplusplus
 }
 #endif

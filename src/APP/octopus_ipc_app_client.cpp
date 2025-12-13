@@ -12,6 +12,9 @@
  */
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#include <iostream>
+#include <sstream>   // ⚠ 必须加
+#include <string>
 #include <algorithm> // For std::remove_if
 #include <list>
 #include "octopus_ipc_app_client.hpp"
@@ -824,11 +827,11 @@ void ipc_send_message_queue_delayed(DataMessage &message, int delay_ms)
  * @param delay         Delay in milliseconds before the message is dispatched.
  * @param message_data  The payload of the message as a byte vector.
  */
-void ipc_send_message_queue(uint8_t group, uint8_t msg_id, const std::vector<uint8_t> &message_data, int delay)
-{
+void ipc_send_message_queue(uint8_t group, uint8_t msg_id, const uint8_t *message_data, int message_size, int delay) {
+    if (message_data == nullptr) return;  // 安全检查
     // Construct the DataMessage object
-    DataMessage message(group, msg_id, message_data);
-
+    //DataMessage message(group, msg_id, message_data);
+    DataMessage message(group, msg_id, std::vector<uint8_t>(message_data, message_data + message_size));
     // Send the message using the existing delayed IPC mechanism
     ipc_send_message_queue_delayed(message, delay);
 }

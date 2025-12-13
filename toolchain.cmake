@@ -1,7 +1,7 @@
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR riscv64)
 
-set(TOOLCHAIN_PATH /home/ak47/Xuantie-900-gcc-linux-6.6.0-musl64-x86_64-V2.10.2-20240904)
+set(TOOLCHAIN_PATH /smb/Xuantie-900-gcc-linux-6.6.0-musl64-x86_64-V2.10.2-20240904)
 set(CMAKE_C_COMPILER ${TOOLCHAIN_PATH}/bin/riscv64-unknown-linux-musl-gcc)
 set(CMAKE_CXX_COMPILER ${TOOLCHAIN_PATH}/bin/riscv64-unknown-linux-musl-g++)
 

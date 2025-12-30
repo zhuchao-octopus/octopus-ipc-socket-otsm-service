@@ -280,8 +280,7 @@ void ipc_server_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const u
             }
             catch (const std::exception &ex)
             {
-                std::cerr << "[ERROR] Notify failed for client.fd=" << client.fd
-                          << ": " << ex.what() << std::endl;
+                std::cerr << "[ERROR] Notify failed for client.fd=" << client.fd << ": " << ex.what() << std::endl;
             }
         }
     }
@@ -661,7 +660,7 @@ void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_i
         if (otsm_get_indicator_info)
         {
             carinfo_indicator_t *carinfo_indicator = otsm_get_indicator_info();
-            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, carinfo_indicator, sizeof(carinfo_indicator_t), "handle_car_infor (Indicator)");
+            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, carinfo_indicator, length, "handle_car_infor (Indicator)");
         }
         else
         {
@@ -674,7 +673,7 @@ void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_i
         if (otsm_get_meter_info)
         {
             carinfo_meter_t *carinfo_meter = otsm_get_meter_info();
-            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, carinfo_meter, sizeof(carinfo_meter_t), "handle_car_infor (Meter)");
+            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, carinfo_meter, length, "handle_car_infor (Meter)");
         }
         else
         {
@@ -687,7 +686,7 @@ void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_i
         if (otsm_get_battery_info)
         {
             carinfo_battery_t *carinfo_battery = otsm_get_battery_info();
-            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, carinfo_battery, sizeof(carinfo_battery_t), "handle_car_infor (battery)");
+            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, carinfo_battery, length, "handle_car_infor (battery)");
         }
         else
         {
@@ -700,7 +699,7 @@ void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_i
         if (otsm_get_error_info)
         {
             carinfo_error_t *carinfo_error = otsm_get_error_info();
-            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, carinfo_error, sizeof(carinfo_error_t), "handle_car_infor (error)");
+            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, carinfo_error, length, "handle_car_infor (error)");
         }
         else
         {
@@ -709,6 +708,10 @@ void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_i
         break;
     }
 
+    case MSG_IPC_CMD_USER_CUSTOMIZE:
+    {
+        ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, data, length, "handle_customize_infor (user)"); 
+    }
 #if 0
     case MSG_IPC_CMD_CAR_GET_DRIVINFO_INFO:
     {

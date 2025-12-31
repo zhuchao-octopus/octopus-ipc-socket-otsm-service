@@ -22,7 +22,7 @@
 
 std::unordered_map<std::string, int> operations = {
     {"help", MSG_GROUP_0},
-    {"set", MSG_GROUP_SET},
+    {"set", MSG_GROUP_SETTING},
     {"car", MSG_GROUP_CAR},
     {"mcu", MSG_GROUP_MCU}};
 

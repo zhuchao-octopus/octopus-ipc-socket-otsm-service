@@ -80,6 +80,7 @@ void ipc_server_send_message_to_client(int client_fd, int msg_grp, int msg_id, T
 void ipc_server_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const uint8_t *data, uint16_t length);
 void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length);
 void ipc_server_notify_mcu_infor_to_client(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length);
+void ipc_server_notify_client_infor_to_mcu(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length);
 void ipc_server_handle_client_event(int client_fd);
 
 int ipc_server_handle_calculation_event(int client_fd, const DataMessage &query_msg);
@@ -382,6 +383,9 @@ void ipc_server_handle_client_event(int client_fd)
             handle_result = ipc_server_handle_car_event(client_fd, data_message); // Vehicle info commands
             break;
 
+        case MSG_GROUP_PASSTHROUGH:
+            handle_result = ipc_server_handle_mcu_event(client_fd, data_message);
+            break;
         default:
             // Unknown group, fallback to help
             handle_result = ipc_server_handle_help_event(client_fd, data_message);
@@ -402,6 +406,7 @@ cleanup:
     // server.cleanup_on_disconnect(client_fd);not good
     std::cout << "Server connection for client [" << client_fd << "] closed." << std::endl;
 }
+
 /// @brief /////////////////////////////////////////////////////////////////////////////////////////////////////
 /// @param client_fd
 /// @param query_msg
@@ -484,7 +489,18 @@ int ipc_server_handle_config_event(int client_fd, const DataMessage &query_msg)
 
 int ipc_server_handle_mcu_event(int client_fd, const DataMessage &query_msg)
 {
-    if (query_msg.msg_id == MSG_IPC_CMD_MCU_REQUEST_UPGRADING) // This task needs to be handled by OTSM
+
+    if (query_msg.msg_group == MSG_GROUP_PASSTHROUGH)
+    {
+
+        if (otsm_MessageDataCallbackFunc)
+        {
+            const uint8_t *ptr_data = query_msg.data.empty() ? nullptr : query_msg.data.data();
+            size_t length = query_msg.data.size();
+            ipc_server_notify_client_infor_to_mcu(client_fd, query_msg.msg_group, query_msg.msg_id, ptr_data, length);
+        }
+    }
+    else if (query_msg.msg_id == MSG_IPC_CMD_MCU_REQUEST_UPGRADING) // This task needs to be handled by OTSM
     {
         if (otsm_SendMessage)
         {
@@ -495,17 +511,18 @@ int ipc_server_handle_mcu_event(int client_fd, const DataMessage &query_msg)
     {
         ipc_server_notify_mcu_infor_to_client(client_fd, query_msg.msg_group, query_msg.msg_id, NULL, 0);
     }
-    else
-    {
-        if (otsm_MessageDataCallbackFunc)
-        {
-            // otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_MCU_EVENT, MSG_OTSM_CMD_MCU_USER_CUSTOMIZE, 0);
-            const uint8_t *ptr_data = query_msg.data.empty() ? nullptr : query_msg.data.data();
-            size_t length = query_msg.data.size();
-            otsm_MessageDataCallbackFunc(query_msg.msg_group, query_msg.msg_id, ptr_data, length);
-        }
-    }
+
     return 0;
+}
+
+void ipc_server_notify_client_infor_to_mcu(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length)
+{
+    if (otsm_MessageDataCallbackFunc)
+    {
+        // otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_MCU_EVENT, MSG_OTSM_CMD_MCU_USER_CUSTOMIZE, 0);
+
+        otsm_MessageDataCallbackFunc(msg_grp, msg_id, data, length);
+    }
 }
 
 // Function to handle calculation logic
@@ -611,31 +628,32 @@ int ipc_server_handle_car_event(int client_fd, const DataMessage &data_message)
         break;
 
     case MSG_IPC_CMD_CAR_SET_INDICATOR:
-        if (data_message.data.size() >= sizeof(carinfo_indicator_t))
+        // if (data_message.data.size() >= sizeof(carinfo_indicator_t))
         {
             carinfo_indicator_t *carinfo_indicator = otsm_get_indicator_info();
-            std::memcpy(carinfo_indicator, data_message.data.data(), sizeof(carinfo_indicator_t));
+            std::memcpy(carinfo_indicator, data_message.data.data(), data_message.msg_length); // sizeof(carinfo_indicator_t));
             // otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_CAR_EVENT, data_message.msg_id, 0);
             otsm_SendMessage(TASK_MODULE_PTL_1, SOC_TO_MCU_MOD_IPC, FRAME_CMD_CAR_SET_INDICATOR, 0);
         }
         break;
 
     case MSG_IPC_CMD_CAR_SET_METER:
-        if (data_message.data.size() >= sizeof(carinfo_meter_t))
+        // if (data_message.data.size() >= sizeof(carinfo_meter_t))
         {
             carinfo_meter_t *carinfo_meter = otsm_get_meter_info();
             // memcpy(carinfo_meter, &data_message.data, sizeof(carinfo_meter_t));
-            std::memcpy(carinfo_meter, data_message.data.data(), sizeof(carinfo_meter_t));
+            data_message.printMessage("SET METER:");
+            std::memcpy(carinfo_meter, data_message.data.data(), data_message.msg_length); // sizeof(carinfo_meter_t));
             otsm_SendMessage(TASK_MODULE_PTL_1, SOC_TO_MCU_MOD_IPC, FRAME_CMD_CAR_SET_METER, 0);
         }
         break;
 
     case MSG_IPC_CMD_CAR_SET_BATTERY:
-        if (data_message.data.size() >= sizeof(carinfo_battery_t))
+        // if (data_message.data.size() >= sizeof(carinfo_battery_t))
         {
             carinfo_battery_t *carinfo_battery = otsm_get_battery_info();
             // memcpy(carinfo_battery, &data_message.data, sizeof(carinfo_battery_t));
-            std::memcpy(carinfo_battery, data_message.data.data(), sizeof(carinfo_battery_t));
+            std::memcpy(carinfo_battery, data_message.data.data(), data_message.msg_length); // sizeof(carinfo_battery_t));
             // otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_CAR_EVENT, data_message.msg_id, 0);
             otsm_SendMessage(TASK_MODULE_PTL_1, SOC_TO_MCU_MOD_IPC, FRAME_CMD_CAR_SET_BATTERY, 0);
         }
@@ -710,7 +728,7 @@ void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_i
 
     case MSG_IPC_CMD_USER_CUSTOMIZE:
     {
-        ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, data, length, "handle_customize_infor (user)"); 
+        ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, data, length, "handle_customize_infor (user)");
     }
 #if 0
     case MSG_IPC_CMD_CAR_GET_DRIVINFO_INFO:

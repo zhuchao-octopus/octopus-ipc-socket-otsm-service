@@ -24,7 +24,7 @@
 #include "../IPC/octopus_ipc_ptl.hpp"
 #include "../IPC/octopus_logger.hpp"
 #include "../IPC/octopus_ipc_socket.hpp"
-#include "../IPC/octopus_ipc_threadpool.hpp" 
+#include "../IPC/octopus_ipc_threadpool.hpp"
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifdef __cplusplus
@@ -44,8 +44,8 @@ extern "C"
      * @param callback Function pointer to the callback.
      */
 
-void ipc_register_socket_callback(const char *func_name, OctopusAppResponseCallback callback);
-void ipc_unregister_socket_callback(OctopusAppResponseCallback callback);
+    void ipc_register_socket_callback(std::string func_name, OctopusAppResponseCallback callback);
+    void ipc_unregister_socket_callback(OctopusAppResponseCallback callback);
 
     /**
      * @brief Initializes the client connection and starts the response receiver thread.
@@ -79,7 +79,7 @@ void ipc_unregister_socket_callback(OctopusAppResponseCallback callback);
      *
      * @param message The message to enqueue and send asynchronously.
      */
-    //void ipc_send_message_queue(DataMessage &message);
+    // void ipc_send_message_queue(DataMessage &message);
 
     /**
      * @brief Send a message into the IPC queue with a delay.
@@ -92,8 +92,7 @@ void ipc_unregister_socket_callback(OctopusAppResponseCallback callback);
      */
     void ipc_send_message_queue_delayed(DataMessage &message, int delay_ms);
 
-void ipc_send_message_queue(uint8_t group, uint8_t msg_id, const uint8_t *message_data, int message_size, int delay);
-
+    void ipc_send_message_queue(uint8_t group, uint8_t msg_id, const uint8_t *message_data, int message_size, int delay);
 
 #ifdef __cplusplus
 }

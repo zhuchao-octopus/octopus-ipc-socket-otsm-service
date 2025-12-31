@@ -198,16 +198,16 @@ bool DataMessage::isValid() const
  */
 void DataMessage::printMessage(const std::string &tag) const
 {
-    std::cout << tag << ": Header 0x" << std::hex << std::setw(2) << std::setfill('0')
+    std::cout << tag << ": Header " << std::hex << std::setw(2) << std::setfill('0')
               << msg_header
-              << ", Group: 0x" << std::setw(2) << static_cast<int>(msg_group)
-              << ", Msg: 0x" << std::setw(2) << static_cast<int>(msg_id)
-              << ", Length: " << std::dec << static_cast<int>(msg_length)
-              << ", Data: ";
+              << ",Group: " << std::setw(2) << static_cast<int>(msg_group)
+              << ",Msg: " << std::setw(2) << static_cast<int>(msg_id)
+              << ",Length: " << std::setw(2) << static_cast<int>(msg_length)
+              << ",Data: ";
 
     for (auto byte : data)
     {
-        std::cout << std::hex << "0x" << static_cast<int>(byte) << " ";
+        std::cout << std::hex << "" << static_cast<int>(byte) << " ";
     }
     std::cout << std::dec << std::endl;
 }

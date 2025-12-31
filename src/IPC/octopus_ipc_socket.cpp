@@ -353,6 +353,7 @@ int Socket::send_response(int socket_fd, std::vector<int> &resp_vector)
 
     return 0;
 }
+
 // Send a response to the client
 int Socket::send_buff(int socket_fd, uint8_t *resp_buffer, int length)
 {
@@ -551,6 +552,7 @@ void Socket::printf_vector_bytes(const std::vector<uint8_t> &vec, int length)
     }
     std::cout << std::dec << std::endl; // 恢复十进制格式
 }
+
 // 打印 vector 中的前 count 个字节
 void Socket::printf_buffer_bytes(const std::vector<uint8_t> &vec, int length)
 {

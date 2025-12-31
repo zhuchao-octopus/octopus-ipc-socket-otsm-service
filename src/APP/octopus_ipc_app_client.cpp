@@ -13,7 +13,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #include <iostream>
-#include <sstream>   // ⚠ 必须加
+#include <sstream> // ⚠ 必须加
 #include <string>
 #include <algorithm> // For std::remove_if
 #include <list>
@@ -115,12 +115,12 @@ bool ipc_is_socket_server_process_running(const std::string &process_name)
         std::string line_str(one_line_array);
 
         // Check if the line contains the target process name and is not a grep command
-        //if (line_str.find(process_name) != std::string::npos && line_str.find("grep") == std::string::npos)
+        // if (line_str.find(process_name) != std::string::npos && line_str.find("grep") == std::string::npos)
         size_t found_index = line_str.find(process_name);
         if (found_index != std::string::npos)
         {
             // Found the process and it's not from a grep command
-            std::cout << "Client: Found:["<< process_name << "] ["<< found_index << "] "<< line_str << std::endl;
+            std::cout << "Client: Found:[" << process_name << "] [" << found_index << "] " << line_str << std::endl;
             fclose(fp);
             return true;
         }
@@ -373,9 +373,10 @@ void ipc_reconnect_to_server()
     // Check if the IPC process is running, if not, start the process
     if (!ipc_is_socket_server_process_running(ipc_server_name))
     {
-       std::cout << "Client: IPC server not running,Starting the server...\n";
-       bool start_ret = ipc_start_process_as_server(ipc_server_path_name);
-       if(!start_ret) return;
+        std::cout << "Client: IPC server not running,Starting the server...\n";
+        bool start_ret = ipc_start_process_as_server(ipc_server_path_name);
+        if (!start_ret)
+            return;
     }
     // Step 1: Initialize a new socket
     // Try to reopen the socket and connect to the server
@@ -703,7 +704,7 @@ void ipc_redirect_log_to_file()
     std::string timestamp = ipc_get_current_timestamp_string();
     // 构建日志文件路径
     std::string log_file_path = "/tmp/octopus_ipc_client.log." + timestamp;
-    FILE* log_file = freopen(log_file_path.c_str(), "w", stdout);
+    FILE *log_file = freopen(log_file_path.c_str(), "w", stdout);
     if (!log_file)
     {
         std::cout << "Failed to redirect stdout to log file: " << log_file_path << std::endl;
@@ -757,7 +758,7 @@ void ipc_send_message_queue_(DataMessage &message)
 
     // Submit the send task to the thread pool asynchronously
     g_threadPool.enqueue([copied_msg]() mutable
-                    {
+                         {
     // Check if the socket is still valid before sending
     if (socket_client.load() < 0)
     {
@@ -767,7 +768,7 @@ void ipc_send_message_queue_(DataMessage &message)
 
     // Serialize the message into a byte vector for transmission
     std::vector<uint8_t> serialized_data = copied_msg.serializeMessage();
-
+    copied_msg.printMessage("ipc_send_message_queue client");
     // Send the serialized data over the active socket
     client.send_query(socket_client.load(), serialized_data); });
 }
@@ -777,7 +778,7 @@ void ipc_send_message_queue_delayed(DataMessage &message, int delay_ms)
     // Make a copy of the message because the lambda will run asynchronously and possibly after the original goes out of scope.
     DataMessage copied_msg = message;
     // message.printMessage("Client");
-    //  Enqueue a delayed task into the thread pool that will execute after 'delay_ms' milliseconds.
+    // Enqueue a delayed task into the thread pool that will execute after 'delay_ms' milliseconds.
     g_threadPool.enqueue_delayed([copied_msg, delay_ms]() mutable
                                  {
                                      // Constants for retry behavior
@@ -827,12 +828,17 @@ void ipc_send_message_queue_delayed(DataMessage &message, int delay_ms)
  * @param delay         Delay in milliseconds before the message is dispatched.
  * @param message_data  The payload of the message as a byte vector.
  */
-void ipc_send_message_queue(uint8_t group, uint8_t msg_id, const uint8_t *message_data, int message_size, int delay) {
-    if (message_data == nullptr) return;  // 安全检查
+void ipc_send_message_queue(uint8_t group, uint8_t msg_id, const uint8_t *message_data, int message_size, int delay)
+{
+    if (message_data == nullptr)
+    {
+        std::cout << "Client: ipc_send_message_queue: message_data is null" << std::endl;
+        return; // 安全检查
+    }
     // Construct the DataMessage object
-    //DataMessage message(group, msg_id, message_data);
+    // DataMessage message(group, msg_id, message_data);
     DataMessage message(group, msg_id, std::vector<uint8_t>(message_data, message_data + message_size));
     // Send the message using the existing delayed IPC mechanism
+    // message.printMessage("ipc_send_message_queue_delayed client");
     ipc_send_message_queue_delayed(message, delay);
 }
-

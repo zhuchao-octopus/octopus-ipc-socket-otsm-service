@@ -77,10 +77,13 @@ T_otsm_MessageDataCallbackFunc otsm_MessageDataCallbackFunc = NULL; // to mcu
 // Function to handle client communication
 template <typename T>
 void ipc_server_send_message_to_client(int client_fd, int msg_grp, int msg_id, T *t_info, size_t size, const std::string &info_type);
-void ipc_server_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const uint8_t *data, uint16_t length);
+
+void ipc_server_mcu_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const uint8_t *data, uint16_t length);
+
 void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length);
 void ipc_server_notify_mcu_infor_to_client(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length);
 void ipc_server_notify_client_infor_to_mcu(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length);
+
 void ipc_server_handle_client_event(int client_fd);
 
 int ipc_server_handle_calculation_event(int client_fd, const DataMessage &query_msg);
@@ -97,9 +100,9 @@ Socket server;
 std::mutex server_mutex;
 // Mutex for client operations to ensure thread-safety
 std::mutex clients_mutex;
-int socket_fd_server = -1;
 // Thread-safe unordered set for active clients
 std::unordered_set<ClientInfo> active_clients;
+int socket_fd_server = -1;
 
 bool ipc_server_socket_debug_print_data = false;
 // Initialize the global thread pool object
@@ -198,9 +201,7 @@ void ipc_server_update_client(int fd, const std::string &ip)
         std::cerr << "Client FD not found: " << fd << std::endl;
     }
 }
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // Function to ensure the directory for the socket file exists
 bool ipc_server_ensure_directory_exists(const char *path)
 {
@@ -249,8 +250,20 @@ void ipc_server_remove_old_socket_bind_file()
     unlink(socket_path);
 }
 
+// Signal handler for clean-up on interrupt (e.g., Ctrl+C)
+void ipc_server_signal_handler(int signum)
+{
+    std::cout << "Server Interrupt signal received. Cleaning up...\n";
+    server.close_socket(socket_fd_server);
+    if (otsm_StopRunning)
+        otsm_StopRunning();
+    exit(signum);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // datas from mcu
-void ipc_server_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const uint8_t *data, uint16_t length)
+void ipc_server_mcu_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const uint8_t *data, uint16_t length)
 {
     // std::cout << "Server handling otsm message cmd_parameter=" << cmd_parameter << std::endl;
     if (active_clients.empty())
@@ -275,7 +288,10 @@ void ipc_server_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const u
                 case MSG_GROUP_MCU:
                     ipc_server_notify_mcu_infor_to_client(client.fd, msg_grp, msg_id, data, length);
                     break;
+
+                case MSG_GROUP_PASSTHROUGH_I:
                 default:
+                    ipc_server_notify_mcu_infor_to_client(client.fd, msg_grp, msg_id, data, length);
                     break;
                 }
             }
@@ -287,16 +303,43 @@ void ipc_server_message_data_callback(uint16_t msg_grp, uint16_t msg_id, const u
     }
 }
 
-// Signal handler for clean-up on interrupt (e.g., Ctrl+C)
-void ipc_server_signal_handler(int signum)
+void ipc_server_notify_mcu_infor_to_client(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length)
 {
-    std::cout << "Server Interrupt signal received. Cleaning up...\n";
-    server.close_socket(socket_fd_server);
-    if (otsm_StopRunning)
-        otsm_StopRunning();
-    exit(signum);
-}
+    switch (msg_id)
+    {
+    case MSG_IPC_CMD_MCU_UPDATING:
+        if (otsm_get_mcu_upgrade_progress_info)
+        {
+            mcu_update_progress_t mcu_update_progress = otsm_get_mcu_upgrade_progress_info();
+            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, &mcu_update_progress, sizeof(mcu_update_progress_t), "handle_mcu_infor (Updating)");
+        }
+        else
+        {
+            LOG_INFO("otsm_get_mcu_upgrade_progress_info function is null!");
+        }
+        break;
 
+    case MSG_IPC_CMD_MCU_VERSION:
+        if (otsm_get_mcu_flash_meta_infor)
+        {
+            flash_meta_infor_t *flash_meta_infor = otsm_get_mcu_flash_meta_infor();
+            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, flash_meta_infor, sizeof(flash_meta_infor_t), "handle_mcu_flash_mata_infor (Meta)");
+        }
+        break;
+
+    case MSG_IPC_CMD_KEY_EVENT:
+    case MSG_IPC_CMD_KEY_DOWN_EVENT:
+    case MSG_IPC_CMD_KEY_UP_EVENT:
+        ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, data, length, "handle_mcu_key_infor (Key)");
+        break;
+
+    default:
+        ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, data, length, "handle_mcu_customize_infor (user)");
+        break;
+    }
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Function to handle communication with a specific client
 // from user app
 /**
@@ -383,7 +426,7 @@ void ipc_server_handle_client_event(int client_fd)
             handle_result = ipc_server_handle_car_event(client_fd, data_message); // Vehicle info commands
             break;
 
-        case MSG_GROUP_PASSTHROUGH:
+        case MSG_GROUP_PASSTHROUGH_O:
             handle_result = ipc_server_handle_mcu_event(client_fd, data_message);
             break;
         default:
@@ -490,9 +533,8 @@ int ipc_server_handle_config_event(int client_fd, const DataMessage &query_msg)
 int ipc_server_handle_mcu_event(int client_fd, const DataMessage &query_msg)
 {
 
-    if (query_msg.msg_group == MSG_GROUP_PASSTHROUGH)
+    if (query_msg.msg_group == MSG_GROUP_PASSTHROUGH_O)
     {
-
         if (otsm_MessageDataCallbackFunc)
         {
             const uint8_t *ptr_data = query_msg.data.empty() ? nullptr : query_msg.data.data();
@@ -507,7 +549,10 @@ int ipc_server_handle_mcu_event(int client_fd, const DataMessage &query_msg)
             otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_MCU_EVENT, MSG_OTSM_CMD_MCU_REQUEST_UPGRADING, 0);
         }
     }
-    else if (query_msg.msg_id == MSG_IPC_CMD_MCU_VERSION)
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // note:client get version from local otsm, not remote mcu
+    if (query_msg.msg_id == MSG_IPC_CMD_MCU_VERSION)
     {
         ipc_server_notify_mcu_infor_to_client(client_fd, query_msg.msg_group, query_msg.msg_id, NULL, 0);
     }
@@ -520,7 +565,6 @@ void ipc_server_notify_client_infor_to_mcu(int client_fd, int msg_grp, int msg_i
     if (otsm_MessageDataCallbackFunc)
     {
         // otsm_SendMessage(TASK_MODULE_IPC, MSG_OTSM_DEVICE_MCU_EVENT, MSG_OTSM_CMD_MCU_USER_CUSTOMIZE, 0);
-
         otsm_MessageDataCallbackFunc(msg_grp, msg_id, data, length);
     }
 }
@@ -757,42 +801,6 @@ void ipc_server_notify_car_infor_to_client(int client_fd, int msg_grp, int msg_i
     }
 }
 
-void ipc_server_notify_mcu_infor_to_client(int client_fd, int msg_grp, int msg_id, const uint8_t *data, uint16_t length)
-{
-    switch (msg_id)
-    {
-    case MSG_IPC_CMD_MCU_UPDATING:
-        if (otsm_get_mcu_upgrade_progress_info)
-        {
-            mcu_update_progress_t mcu_update_progress = otsm_get_mcu_upgrade_progress_info();
-            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, &mcu_update_progress, sizeof(mcu_update_progress_t), "handle_mcu_infor (Updating)");
-        }
-        else
-        {
-            LOG_INFO("otsm_get_mcu_upgrade_progress_info function is null!");
-        }
-        break;
-
-    case MSG_IPC_CMD_MCU_VERSION:
-        if (otsm_get_mcu_flash_meta_infor)
-        {
-            flash_meta_infor_t *flash_meta_infor = otsm_get_mcu_flash_meta_infor();
-            ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, flash_meta_infor, sizeof(flash_meta_infor_t), "handle_mcu_flash_mata_infor (Meta)");
-        }
-        break;
-
-    case MSG_IPC_CMD_KEY_EVENT:
-    case MSG_IPC_CMD_KEY_DOWN_EVENT:
-    case MSG_IPC_CMD_KEY_UP_EVENT:
-        ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, data, length, "handle_mcu_key_infor (Key)");
-        break;
-
-    default:
-        ipc_server_send_message_to_client(client_fd, msg_grp, msg_id, data, length, "handle_mcu_customize_infor (user)");
-        break;
-    }
-}
-
 // Helper function to handle the car info response logic
 template <typename T>
 void ipc_server_send_message_to_client(int client_fd, int msg_grp, int msg_id, T *t_info, size_t size, const std::string &info_type)
@@ -936,7 +944,7 @@ void ipc_server_initialize_otsm()
         return;
     }
 
-    otsm_MessageDataCallbackFunc = (T_otsm_MessageDataCallbackFunc)dlsym(handle, "ipc_notify_message_from_client");
+    otsm_MessageDataCallbackFunc = (T_otsm_MessageDataCallbackFunc)dlsym(handle, "ipc_notify_message_to_mcu");
     if (!otsm_MessageDataCallbackFunc)
     {
         std::cerr << "Server Failed to find otsm_MessageDataCallbackFunc: " << dlerror() << std::endl;
@@ -944,7 +952,7 @@ void ipc_server_initialize_otsm()
         return;
     }
 
-    otsm_RegisterMessageCallback(ipc_server_message_data_callback);
+    otsm_RegisterMessageCallback(ipc_server_mcu_message_data_callback);
     /// 调用库中的初始化函数
     /// initialize_func();
 }
